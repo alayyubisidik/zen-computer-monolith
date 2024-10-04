@@ -2,9 +2,8 @@ package helper
 
 import (
 	"encoding/json"
-	"errors"
-	"log"
 	"strings"
+	"zen_computer/exception"
 
 	"github.com/gin-gonic/gin"
 )
@@ -14,17 +13,15 @@ type UserDataToken struct {
 	Role string `json:"role"`
 }
 
-func ParseHeaderAuthorization(ctx *gin.Context) UserDataToken {
+func ParseHeaderAuthorization(ctx *gin.Context) (UserDataToken, error) {
 	authHeader := ctx.GetHeader("Authorization")
 	if authHeader == "" {
-		log.Println("Authorization header not found")
-		panic(errors.New("Authorization header not found"))
+		return UserDataToken{}, exception.NewUnAuthorizedError("Unauthorized")
 	}
 
 	parts := strings.Split(authHeader, " ")
 	if len(parts) != 2 || parts[0] != "Bearer" {
-		log.Println("Authorization header format is incorrect")
-		panic(errors.New("Authorization header format is incorrect"))
+		return UserDataToken{}, exception.NewUnAuthorizedError("Unauthorized")
 	}
 
 	tokenString := parts[1]
@@ -32,9 +29,8 @@ func ParseHeaderAuthorization(ctx *gin.Context) UserDataToken {
 	var user UserDataToken
 	err := json.Unmarshal([]byte(tokenString), &user)
 	if err != nil {
-		log.Println("Failed to parse token string: ", err)
-		panic(errors.New("Failed to parse token"))
+		return UserDataToken{}, exception.NewUnAuthorizedError("Unauthorized")
 	}
 
-	return user
+	return user, nil
 }

@@ -2,8 +2,10 @@ package usercontroller
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"zen_computer/database"
 	"zen_computer/exception"
 	"zen_computer/helper"
@@ -173,7 +175,11 @@ func SignInWithGoogle(ctx *gin.Context) {
 }
 
 func CurrentUser(ctx *gin.Context) {
-	userFromHeader := helper.ParseHeaderAuthorization(ctx)
+	userFromHeader, err := helper.ParseHeaderAuthorization(ctx)
+	if err != nil {
+		ctx.Error(err)
+		return
+	}
 
 	if userFromHeader.ID == 0 {
 		ctx.JSON(http.StatusOK, response.WebResponse{
@@ -182,7 +188,7 @@ func CurrentUser(ctx *gin.Context) {
 	}
 
 	var user models.User
-	err := database.DB.Transaction(func(tx *gorm.DB) error {
+	err = database.DB.Transaction(func(tx *gorm.DB) error {
 		tx.Take(&user, "id = ?", userFromHeader.ID)
 
 		return nil
@@ -204,3 +210,142 @@ func CurrentUser(ctx *gin.Context) {
 	})
 }
 
+func Update(ctx *gin.Context) {
+	var urlCloudinary = os.Getenv("CLOUDINARY_URL")
+
+	var userUpdateRequest request.UserUpdateRequest
+
+	if err := ctx.ShouldBindWith(&userUpdateRequest, binding.FormMultipart); err != nil {
+		ctx.Error(err)
+		return
+	}
+
+	if userUpdateRequest.Image != nil {
+		err := helper.ValidateImageFile(ctx)
+		if err != nil {
+			ctx.Error(err)
+			return
+		}
+	}
+
+	userId := ctx.Param("userId")
+	id, err := strconv.Atoi(userId)
+	helper.PanicIfError(err)
+
+	var existingUser models.User
+	err = database.DB.Transaction(func(tx *gorm.DB) error {
+
+		if err := tx.Take(&existingUser, "id = ?", id).Error; err != nil {
+			return exception.NewNotFoundError("user not found")
+		}
+
+		var conflictUser models.User
+		err = tx.Where("email = ? AND id != ?", userUpdateRequest.Email, existingUser.ID).First(&conflictUser).Error
+		if err == nil {
+			return exception.NewConflictError("email is already exists")
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		ctx.Error(err)
+		return
+	}
+
+	if userUpdateRequest.Image != nil {
+		cldService, _ := cloudinary.NewFromURL(urlCloudinary)
+
+		if existingUser.PublicId != "profile-picture/tvrg2tuayakndkpoldqj" {
+			cldService.Upload.Destroy(ctx, uploader.DestroyParams{
+				PublicID: existingUser.PublicId,
+			})
+		}
+
+		resp, _ := cldService.Upload.Upload(ctx, userUpdateRequest.Image, uploader.UploadParams{
+			Folder: "profile-picture",
+		})
+
+		existingUser.Image = resp.SecureURL
+		existingUser.PublicId = resp.PublicID
+	}
+
+	existingUser.FullName = userUpdateRequest.FullName
+	existingUser.Email = userUpdateRequest.Email
+	existingUser.PhoneNumber = userUpdateRequest.PhoneNumber
+	existingUser.Gender = userUpdateRequest.Gender
+	existingUser.DateOfBirth = userUpdateRequest.DateOfBirth
+
+	err = database.DB.Transaction(func(tx *gorm.DB) error {
+		err := tx.Save(&existingUser).Error
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		ctx.Error(err)
+		return
+	}
+
+	ctx.JSON(http.StatusOK, response.WebResponse{
+		Data: helper.ToUserResponse(existingUser),
+	})
+}
+
+func GetAll(ctx *gin.Context) {
+	var users []models.User
+	err := database.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("role != ?", "admin").Find(&users).Error; err != nil {
+			return err
+		}
+		return nil
+	})	
+
+	if err != nil {
+		ctx.Error(err)
+		return
+	}
+
+	ctx.JSON(http.StatusOK, response.WebResponse{
+		Data: helper.ToUserResponses(users),
+	})
+}
+
+
+func ChangeStatus(ctx *gin.Context) {
+	id := ctx.Param("userId")
+	userId, err := strconv.Atoi(id)
+
+	log.Print("testsstst")
+
+	var user models.User
+	err = database.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Take(&user, "id = ?", userId).Error; err != nil {
+			return exception.NewNotFoundError("User not found")
+		}
+
+		if user.Status == "active" {
+			user.Status = "blocked"
+		} else {
+			user.Status = "active"
+		}
+
+		if err := tx.Save(&user).Error; err != nil {
+			return err 
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		ctx.Error(err)
+		return
+	}
+
+	ctx.JSON(http.StatusOK, response.WebResponse{
+		Data: "Change status success!",
+	})
+}
