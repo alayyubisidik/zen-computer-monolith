@@ -82,27 +82,3 @@ export default function SignIn() {
         </section>
     );
 }
-
-export const getServerSideProps: GetServerSideProps = async (
-    context: GetServerSidePropsContext
-) => {
-    const session = await getSession({ req: context.req });
-
-    console.log("signin = ", session)
-
-    if (session) {
-        return {
-            redirect: {
-                destination: "/",
-                permanent: false
-            }
-        }
-    }
-
-    return {
-        props: {
-            session: session || null
-        }
-    };
-};
-

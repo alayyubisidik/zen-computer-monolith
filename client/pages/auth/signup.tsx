@@ -255,26 +255,5 @@ const SignUp = () => {
     );
 };
 
-export const getServerSideProps: GetServerSideProps = async (
-    context: GetServerSidePropsContext
-) => {
-    const session = await getSession({ req: context.req });
-
-    if (session) {
-        return {
-            redirect: {
-                destination: "/",
-                permanent: false
-            }
-        };
-    }
-
-    return {
-        props: {
-            session: session || null
-        }
-    };
-};
-
 
 export default SignUp

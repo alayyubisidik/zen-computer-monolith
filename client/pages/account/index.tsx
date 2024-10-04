@@ -1,4 +1,5 @@
 import AccountLayout from "@/components/AccountLayout";
+import Loader from "@/components/Loader";
 import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import { GetServerSideProps, GetServerSidePropsContext } from "next";
@@ -31,6 +32,8 @@ const Profile: React.FC<ProfileProps> = ({ user }) => {
     const [dateOfBirth, setDateOfBirth] = useState("");
     const [image, setImage] = useState("");
 
+    console.log(gender)
+
     const fileInputRef = useRef<HTMLInputElement | null>(null);
 
     useEffect(() => {
@@ -55,7 +58,6 @@ const Profile: React.FC<ProfileProps> = ({ user }) => {
         }
     };
     
-
     const handleButtonClick = () => {
         if (fileInputRef.current) {
             fileInputRef.current.click();
@@ -82,10 +84,16 @@ const Profile: React.FC<ProfileProps> = ({ user }) => {
             formData.append("image", enteredFile);
         }
 
+        const userToken = {
+            id: user.id,
+            role: user.role
+        }
+
         try {
-            await axios.put(`/api/v1/auth/${user.id}`, formData, {
+            await axios.put(`http://localhost:8000/api/v1/auth/${user.id}`, formData, {
                 headers: {
                     "Content-Type": "multipart/form-data",
+                    "Authorization": `Bearer ${JSON.stringify(userToken)}`
                 },
             });
 
@@ -102,6 +110,7 @@ const Profile: React.FC<ProfileProps> = ({ user }) => {
     }
     return (
         <AccountLayout>
+            {loading && <Loader/>}
             <div className="border-b-2 border-blue-700">
                 <h1 className="text-xl text-white font-semibold">My Profile</h1>
                 <p className="text-sm mb-1 text-white">
@@ -199,8 +208,8 @@ const Profile: React.FC<ProfileProps> = ({ user }) => {
                                 id="gender"
                                 className="bg-gray-950 border border-blue-700 text-white text-sm rounded-lg focus:outline-none focus:ring-red-500 focus:border-red-500 block w-full p-2.5"
                             >
-                                <option value="laki-laki">Male</option>
-                                <option value="perempuan">Female</option>
+                                <option value="male">Male</option>
+                                <option value="female">Female</option>
                             </select>
                         </div>
                         <button
@@ -254,10 +263,20 @@ export default Profile
 export const getServerSideProps: GetServerSideProps = async (context: GetServerSidePropsContext) => {
     const session = await getSession({ req: context.req });
 
+    if (!session) {
+        return {
+            redirect: {
+                destination: "/",
+                permanent: false
+            }
+        }
+    }
+
     const user =  {
         id: session?.user.id,
         role: session?.user.role,
     }
+
     const { data } = await axios.get("http://localhost:8000/api/v1/auth/currentuser", {
         headers: {
             "Content-Type": "application/json",
@@ -272,6 +291,7 @@ export const getServerSideProps: GetServerSideProps = async (context: GetServerS
             },
         };
     }
+
 
     return {
         props: {
